@@ -7,6 +7,10 @@ import subprocess
 import urllib.request
 from static_ffmpeg import run
 
+import pip_system_certs.wrapt_requests
+pip_system_certs.wrapt_requests.inject_truststore()
+
+
 PLAYLIST_URL = "https://music.youtube.com/playlist?list=LM"
 YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 
