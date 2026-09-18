@@ -34,6 +34,15 @@ def app_dir() -> str:
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
+def user_data_dir() -> str:
+    """Стандартная папка приложения в профиле пользователя (Windows)."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    path = os.path.join(base, "YouTrack Downloader")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 def no_window_flags() -> int:
     return subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -85,7 +94,18 @@ class App(ctk.CTk):
     # ---------------- paths ----------------
     @property
     def ytdlp_path(self) -> str:
-        return os.path.join(app_dir(), "yt-dlp.exe")
+        # 1) приоритет — пользовательская папка (туда пишет апдейтер)
+        user_path = os.path.join(user_data_dir(), "yt-dlp.exe")
+        if os.path.isfile(user_path):
+            return user_path
+
+        # 2) fallback — рядом с программой (для отладки/первого запуска)
+        local_path = os.path.join(app_dir(), "yt-dlp.exe")
+        if os.path.isfile(local_path):
+            return local_path
+
+        # 3) нигде нет — возвращаем "целевой" путь для скачивания
+        return user_path
 
 
     def _check_dependencies(self):
@@ -321,11 +341,12 @@ class App(ctk.CTk):
         threading.Thread(target=self._update_worker, daemon=True).start()
 
     def _update_worker(self):
+        target = os.path.join(user_data_dir(), "yt-dlp.exe")
         try:
             self.set_status("Скачиваю свежий yt-dlp.exe…")
             self.log("→ Загрузка: " + YTDLP_URL)
 
-            tmp = self.ytdlp_path + ".part"
+            tmp = target + ".part"
             with urllib.request.urlopen(YTDLP_URL, timeout=60) as r, open(tmp, "wb") as f:
                 total = int(r.headers.get("Content-Length") or 0)
                 got = 0
@@ -339,9 +360,9 @@ class App(ctk.CTk):
                         frac = got / total
                         self.after(0, lambda fr=frac: self.file_progress.set(fr))
 
-            os.replace(tmp, self.ytdlp_path)
+            os.replace(tmp, target)
             self.after(0, lambda: self.file_progress.set(0))
-            self.log(f"✓ yt-dlp обновлён: {self.ytdlp_path}")
+            self.log(f"✓ yt-dlp обновлён: {target}")
             self.after(0, lambda: self.version_label.configure(
                 text=self._ytdlp_version_text()))
             self.set_status("yt-dlp готов — можно скачивать")
